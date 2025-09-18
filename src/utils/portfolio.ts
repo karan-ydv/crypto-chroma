@@ -2,7 +2,9 @@ import { CryptoAsset, PortfolioAsset, PortfolioMetrics, ChartDataPoint, TimeRang
 
 export const calculatePortfolioMetrics = (
   assets: PortfolioAsset[],
-  totalPortfolioValue: number
+  totalPortfolioValue: number,
+  chartData?: ChartDataPoint[],
+  timeRange?: TimeRange
 ): PortfolioMetrics => {
   if (assets.length === 0) {
     return {
@@ -13,19 +15,47 @@ export const calculatePortfolioMetrics = (
     };
   }
 
-  // Calculate weighted average return (24h)
-  const totalWeightedReturn = assets.reduce((sum, asset) => {
-    const weight = asset.allocation / 100;
-    return sum + (asset.price_change_percentage_24h * weight);
-  }, 0);
+  let totalWeightedReturn = 0;
+  let returns: number[] = [];
 
-  // Calculate volatility (simplified - using 24h change as proxy)
-  const returns = assets.map(asset => asset.price_change_percentage_24h);
-  const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-  const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
+  // If we have chart data, calculate returns from historical data
+  if (chartData && chartData.length > 1 && timeRange) {
+    const firstDataPoint = chartData[0];
+    const lastDataPoint = chartData[chartData.length - 1];
+    
+    let portfolioStartValue = 0;
+    let portfolioEndValue = 0;
+    
+    assets.forEach(asset => {
+      const weight = asset.allocation / 100;
+      const startPrice = firstDataPoint[asset.id] as number || 0;
+      const endPrice = lastDataPoint[asset.id] as number || 0;
+      
+      if (startPrice > 0) {
+        const assetReturn = ((endPrice - startPrice) / startPrice) * 100;
+        totalWeightedReturn += assetReturn * weight;
+        returns.push(assetReturn);
+        
+        portfolioStartValue += startPrice * weight * totalPortfolioValue / asset.current_price;
+        portfolioEndValue += endPrice * weight * totalPortfolioValue / asset.current_price;
+      }
+    });
+  } else {
+    // Fallback to 24h data
+    totalWeightedReturn = assets.reduce((sum, asset) => {
+      const weight = asset.allocation / 100;
+      return sum + (asset.price_change_percentage_24h * weight);
+    }, 0);
+    
+    returns = assets.map(asset => asset.price_change_percentage_24h);
+  }
+
+  // Calculate volatility
+  const avgReturn = returns.length > 0 ? returns.reduce((sum, ret) => sum + ret, 0) / returns.length : 0;
+  const variance = returns.length > 0 ? returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length : 0;
   const volatility = Math.sqrt(variance);
 
-  // Estimate total return in dollars (simplified calculation)
+  // Calculate total return in dollars
   const totalReturn = (totalWeightedReturn / 100) * totalPortfolioValue;
 
   return {
@@ -55,7 +85,8 @@ export const createPortfolioAssets = (
 
 export const combineChartData = (
   assetsData: Array<{ id: string; prices: [number, number][] }>,
-  assets: Array<{ id: string; symbol: string; name: string }>
+  assets: Array<{ id: string; symbol: string; name: string }>,
+  portfolioAssets?: PortfolioAsset[]
 ): ChartDataPoint[] => {
   if (!assetsData.length || !assetsData[0]?.prices.length) return [];
 
@@ -68,13 +99,30 @@ export const combineChartData = (
       date: new Date(timestamp).toISOString(),
     };
 
+    let portfolioValue = 0;
+
     // Add price data for each asset
     assetsData.forEach(assetData => {
       const priceEntry = assetData.prices.find(([ts]) => ts === timestamp);
       if (priceEntry) {
         dataPoint[assetData.id] = priceEntry[1];
+        
+        // Calculate portfolio value if we have allocation data
+        if (portfolioAssets) {
+          const portfolioAsset = portfolioAssets.find(pa => pa.id === assetData.id);
+          if (portfolioAsset && portfolioAsset.allocation > 0) {
+            const weight = portfolioAsset.allocation / 100;
+            const assetValue = priceEntry[1] * weight * portfolioAsset.value / portfolioAsset.current_price;
+            portfolioValue += assetValue;
+          }
+        }
       }
     });
+
+    // Add combined portfolio value
+    if (portfolioAssets && portfolioValue > 0) {
+      dataPoint.portfolioValue = portfolioValue;
+    }
 
     return dataPoint;
   });

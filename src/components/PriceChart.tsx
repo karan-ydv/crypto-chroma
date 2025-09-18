@@ -50,11 +50,22 @@ export const PriceChart: React.FC<PriceChartProps> = ({
           <p className="text-sm text-muted-foreground mb-2">
             {new Date(label).toLocaleString()}
           </p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
-              {entry.name}: {formatPrice(entry.value)}
-            </p>
-          ))}
+          {payload.map((entry: any, index: number) => {
+            if (entry.dataKey === 'portfolioValue') {
+              return (
+                <p key={index} className="text-sm font-bold text-primary border-b border-border/30 pb-1 mb-1">
+                  🏦 Portfolio Value: {formatPrice(entry.value)}
+                </p>
+              );
+            }
+            
+            const asset = assets.find(a => a.id === entry.dataKey);
+            return (
+              <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
+                {asset ? `${asset.symbol.toUpperCase()} (${asset.name})` : entry.name}: {formatPrice(entry.value)}
+              </p>
+            );
+          })}
         </div>
       );
     }
@@ -110,6 +121,22 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
+                
+                {/* Combined Portfolio Value Line */}
+                {data.some(d => d.portfolioValue) && (
+                  <Line
+                    key="portfolioValue"
+                    type="monotone"
+                    dataKey="portfolioValue"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={3}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    name="Portfolio Value"
+                    connectNulls={false}
+                  />
+                )}
+                
                 {assets.map((asset) => (
                   <Line
                     key={asset.id}

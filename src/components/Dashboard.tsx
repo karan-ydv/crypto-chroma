@@ -62,13 +62,14 @@ export const Dashboard: React.FC = () => {
 
   // Calculate portfolio metrics
   const portfolioMetrics = useMemo(() => {
-    return calculatePortfolioMetrics(portfolioAssets, totalPortfolioValue);
-  }, [portfolioAssets, totalPortfolioValue]);
+    if (!portfolioAssets || portfolioAssets.length === 0) return null;
+    return calculatePortfolioMetrics(portfolioAssets, totalPortfolioValue, chartData, timeRange);
+  }, [portfolioAssets, totalPortfolioValue, chartData, timeRange]);
 
   // Load chart data when assets or time range changes
   useEffect(() => {
     const loadChartData = async () => {
-      if (selectedAssets.length === 0) {
+      if (selectedAssets.length === 0 || !assetsData || portfolioAssets.length === 0) {
         setChartData([]);
         return;
       }
@@ -82,7 +83,7 @@ export const Dashboard: React.FC = () => {
         });
 
         const assetsChartData = await Promise.all(chartPromises);
-        const combinedData = combineChartData(assetsChartData, assetsData || []);
+        const combinedData = combineChartData(assetsChartData, assetsData, portfolioAssets);
         setChartData(combinedData);
       } catch (error) {
         console.error('Error loading chart data:', error);
@@ -97,7 +98,7 @@ export const Dashboard: React.FC = () => {
     };
 
     loadChartData();
-  }, [selectedAssets, timeRange, assetsData, toast]);
+  }, [selectedAssets, timeRange, assetsData, portfolioAssets, toast]);
 
   // Chart colors and asset info
   const chartAssets = useMemo(() => {
